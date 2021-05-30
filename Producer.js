@@ -52,8 +52,13 @@ var http = require("http");
 var server = http.createServer(function (req, res) {
 	res.setHeader("Access-Control-Allow-Origin", "*");
 	var data = "";
-	req.on("data", function (chunk) {
-		data = JSON.parse(chunk);
+	req.on("data", function(chunk) {
+        data += chunk;
+	});
+	req.on("end", function () {
+		data = JSON.parse(data);
+		console.log("Request received from: " + req.socket.remoteAddress);
+		console.log("Request Message :", data);
 		// check if queue_name exists in request
 		if (!("queue_name" in data)) {
 			writeResponse(res, ERR_QUEUE_NAME_NOT_SPECIFIED);
@@ -112,11 +117,6 @@ var server = http.createServer(function (req, res) {
 		} else {
 			writeResponse(res, ERR_INVALID_OPERATION);
 		}
-	});
-	req.on("end", function () {
-		console.log("Request received from: " + req.socket.remoteAddress);
-		console.log("Request Message :", data);
-		//console.log("Message:   Received " + data.insertedText + " at " + data.startLoc);
 	});
 });
 
@@ -179,10 +179,8 @@ function purgeQueue() {
 const SERVER_URL = "https://cgeditor-server.herokuapp.com";
 
 function wakeUpServer() {
-    var h = new XMLHttpRequest();
-    h.open("POST", SERVER_URL, true);
-	h.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
-	h.send("{}");
+    var h = require('https') ;
+    h.get(SERVER_URL);
 }
 
 // wake up every 5 minutes to purge any unused queue
