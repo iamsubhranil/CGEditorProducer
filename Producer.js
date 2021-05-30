@@ -103,7 +103,7 @@ var server = http.createServer(function (req, res) {
 			// wake up the server if it is sleeping
 			wakeUpServer();
 			// send the change to queue
-			senderChannel.sendToQueue(q, Buffer.from(chunk));
+			senderChannel.sendToQueue(q, Buffer.from(data));
 			queue_map[q] = new Date();
 			writeResponse(res, 200, "Message sent!");
 		} else if (op == OPERATION_JOIN) {
