@@ -1,7 +1,7 @@
 // Access the callback-based API
 var amqp = require("amqplib/callback_api");
 // THIS SHOULD BE A SECRET
-const CLOUDAMQP_URL = process.env.AMQP_URL;
+const CLOUDAMQP_URL = process.env.AMQPURL;
 
 var senderChannel = null;
 var queue_map = {};
