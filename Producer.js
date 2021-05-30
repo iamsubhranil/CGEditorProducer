@@ -82,6 +82,9 @@ var server = http.createServer(function (req, res) {
 					COMMAND_QUEUE,
 					Buffer.from("add " + q)
 				);
+				// wake up the server if it is sleeping
+				wakeUpServer();
+				// write the response back
 				writeResponse(res, 200, "Queue generated!");
 			}
 		} else if (op == OPERATION_SEND) {
@@ -92,6 +95,9 @@ var server = http.createServer(function (req, res) {
 				writeResponse(res, ERR_QUEUE_NOT_FOUND);
 				return;
 			}
+			// wake up the server if it is sleeping
+			wakeUpServer();
+			// send the change to queue
 			senderChannel.sendToQueue(q, Buffer.from(chunk));
 			queue_map[q] = new Date();
 			writeResponse(res, 200, "Message sent!");
@@ -168,6 +174,15 @@ function purgeQueue() {
 		}
 	}
 	console.log("[x] Cleanup finished..");
+}
+
+const SERVER_URL = "https://cgeditor-server.herokuapp.com";
+
+function wakeUpServer() {
+    var h = new XMLHttpRequest();
+    h.open("POST", SERVER_URL, true);
+	h.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
+	h.send("{}");
 }
 
 // wake up every 5 minutes to purge any unused queue
