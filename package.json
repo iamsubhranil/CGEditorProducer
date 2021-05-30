@@ -1,0 +1,31 @@
+{
+  "name": "collaborative-editor",
+  "version": "1.0.0",
+  "description": "a real time collaborative editing environment",
+  "main": "Collaborative_HTML.html",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node Producer.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Anubhab-Bob/Collaborative-Editor.git"
+  },
+  "author": "anubhab anirban subhranil",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Anubhab-Bob/Collaborative-Editor/issues"
+  },
+  "homepage": "https://github.com/Anubhab-Bob/Collaborative-Editor#readme",
+  "dependencies": {
+    "amqplib": "^0.8.0"
+  },
+  "engines": {
+    "node": "16.x",
+    "npm": "7.x"
+  },
+  "keywords": [
+    "group",
+    "editor"
+  ]
+}
