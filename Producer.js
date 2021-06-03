@@ -2,6 +2,9 @@
 var amqp = require("amqplib/callback_api");
 // THIS SHOULD BE A SECRET
 const CLOUDAMQP_URL = process.env.AMQPURL;
+if (CLOUDAMQP_URL == null || CLOUDAMQP_URL.length == 0) {
+	console.log("[!] Error: Set AMQPURL environment variable first!");
+}
 
 var senderChannel = null;
 var queue_map = {};
@@ -44,16 +47,16 @@ function writeResponse(res, code, msg = "") {
 const COMMAND_QUEUE = "__cge_internal_command_queue";
 
 var PORT = process.env.PORT;
-if(PORT == null || PORT == "") {
-    PORT = 8081;
+if (PORT == null || PORT == "") {
+	console.log("[!] Set PORT environment variable first!");
 }
 
 var http = require("http");
 var server = http.createServer(function (req, res) {
 	res.setHeader("Access-Control-Allow-Origin", "*");
 	var data = "";
-	req.on("data", function(chunk) {
-        data += chunk;
+	req.on("data", function (chunk) {
+		data += chunk;
 	});
 	req.on("end", function () {
 		data = JSON.parse(data);
@@ -176,11 +179,14 @@ function purgeQueue() {
 	console.log("[x] Cleanup finished..");
 }
 
-const SERVER_URL = "https://cgeditor-server.herokuapp.com";
+const SERVER_URL = process.env.SERVERURL;
+if (SERVER_URL == null || SERVER_URL.length == 0) {
+	console.log("[!] Error: Set SERVERURL environment variable first!");
+}
 
 function wakeUpServer() {
-    var h = require('https') ;
-    h.get(SERVER_URL);
+	var h = require("https");
+	h.get(SERVER_URL);
 }
 
 // wake up every 5 minutes to purge any unused queue
