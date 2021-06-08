@@ -1,7 +1,8 @@
 // Access the callback-based API
 var amqp = require("amqplib/callback_api");
 // THIS SHOULD BE A SECRET
-const CLOUDAMQP_URL = process.env.AMQPURL;
+//const CLOUDAMQP_URL = 'amqps://xbxuskpq:RkcS4WW62YPZLE6hPULkqviRShxRAyaI@puffin.rmq2.cloudamqp.com/xbxuskpq';
+//const CLOUDAMQP_URL = process.env.AMQPURL;
 if (CLOUDAMQP_URL == null || CLOUDAMQP_URL.length == 0) {
 	console.log("[!] Error: Set AMQPURL environment variable first!");
 }
@@ -51,6 +52,7 @@ if (PORT == null || PORT == "") {
 	console.log("[!] Set PORT environment variable first!");
 }
 
+var transformedOperation = "";
 var http = require("http");
 var server = http.createServer(function (req, res) {
 	res.setHeader("Access-Control-Allow-Origin", "*");
@@ -109,6 +111,8 @@ var server = http.createServer(function (req, res) {
 			senderChannel.sendToQueue(q, Buffer.from(JSON.stringify(data)));
 			queue_map[q] = new Date();
 			writeResponse(res, 200, "Message sent!");
+			//writeResponse(res, 200, transformedOperation);
+			transformedOperation = "";
 		} else if (op == OPERATION_JOIN) {
 			if (!(q in queue_map)) {
 				writeResponse(res, ERR_QUEUE_NOT_FOUND);
@@ -129,6 +133,7 @@ amqp.connect(CLOUDAMQP_URL, function (error0, connection) {
 	if (error0) {
 		throw error0;
 	}
+	// Sending Queue
 	connection.createChannel(function (error1, channel) {
 		if (error1) {
 			throw error1;
@@ -140,7 +145,38 @@ amqp.connect(CLOUDAMQP_URL, function (error0, connection) {
 		console.log("[x] Starting server..");
 		server.listen(PORT);
 	});
+	// Receiving Queue
+	connection.createChannel(function (error1, channel) {
+		if (error1) {
+			throw error1;
+		}
+		var exchange = 'server_sendingQueue';
+	
+		channel.assertExchange(exchange, 'fanout', {
+			durable: false
+		});
+	
+		channel.assertQueue('', {
+			exclusive: true
+		}, function (error2, q) {
+			if (error2) {
+				throw error2;
+			}
+			console.log(" [*] Waiting for messages in %s. To exit press CTRL+C", q.queue);
+			channel.bindQueue(q.queue, exchange, '');
+	
+			channel.consume(q.queue, function (msg) {
+				if (msg.content) {
+					transformedOperation = msg.content.toString();
+					console.log(" [x] %s", msg.content.toString());
+				}
+			}, {
+				noAck: true
+			});
+		});
+	});
 });
+
 
 /*
 const localtunnel = require("localtunnel");
