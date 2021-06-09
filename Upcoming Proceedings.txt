@@ -1,0 +1,22 @@
+1. To maintain a fanout connection for each of the N clients there needs to be N 
+alive connections persistently available. 
+
+2. Client does not know about such connections so Producer.JS has to maintain 
+all the connections all the clients.
+
+3. Client maintains counter to inform the Producer of the next operation to receive
+
+4. Producer maintains an array of pending operations for each receivingQueue
+
+5. Producer when receives the counter from the client it sends all the pending 
+operations from the array from index=counter to index=n. 
+
+6. Producer has to keep tab of these operations for all clients and also has to 
+flush out the sent operations time to time when all clients have recevied upto a 
+particular operation.
+
+7. Client will update counter by N only on successful receiving of N consecutive 
+operations
+
+8. As the Producer iteself is responsible to propagate the operations to all the 
+clients the server might not need a fanout exchange.

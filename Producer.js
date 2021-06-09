@@ -1,18 +1,21 @@
 // Access the callback-based API
 var amqp = require("amqplib/callback_api");
 // THIS SHOULD BE A SECRET
-//const CLOUDAMQP_URL = 'amqps://xbxuskpq:RkcS4WW62YPZLE6hPULkqviRShxRAyaI@puffin.rmq2.cloudamqp.com/xbxuskpq';
+const CLOUDAMQP_URL =
+	"amqps://xbxuskpq:RkcS4WW62YPZLE6hPULkqviRShxRAyaI@puffin.rmq2.cloudamqp.com/xbxuskpq";
 //const CLOUDAMQP_URL = process.env.AMQPURL;
 if (CLOUDAMQP_URL == null || CLOUDAMQP_URL.length == 0) {
 	console.log("[!] Error: Set AMQPURL environment variable first!");
 }
 
 var senderChannel = null;
-var queue_map = {};
+var sending_queue_map = {};
+var receiving_queue_list = [];
 
 const OPERATION_CREATE = "create";
 const OPERATION_SEND = "send";
 const OPERATION_JOIN = "join";
+const OPERATION_GET_MSG = "receive";
 
 const ERR_QUEUE_NAME_NOT_SPECIFIED = 460;
 const ERR_START = ERR_QUEUE_NAME_NOT_SPECIFIED;
@@ -65,7 +68,10 @@ var server = http.createServer(function (req, res) {
 		console.log("Request received from: " + req.socket.remoteAddress);
 		console.log("Request Message :", data);
 		// check if queue_name exists in request
-		if (!("queue_name" in data)) {
+		if (
+			!("sending_queue_name" in data) ||
+			!("receiving_queue_name" in data)
+		) {
 			writeResponse(res, ERR_QUEUE_NAME_NOT_SPECIFIED);
 			return;
 		}
@@ -74,33 +80,51 @@ var server = http.createServer(function (req, res) {
 			writeResponse(res, ERR_OPERATION_NAME_NOT_SPECIFIED);
 			return;
 		}
-		var q = data["queue_name"];
+		var sending_queue = data["sending_queue_name"];
+		var receiving_queue = data["receiving_queue_name"];
 		var op = data["operation"];
-		if (q == COMMAND_QUEUE) {
+		if (
+			sending_queue == COMMAND_QUEUE ||
+			receiving_queue == COMMAND_QUEUE
+		) {
 			writeResponse(res, ERR_RESERVED_QUEUE_NAME);
 			return;
 		}
 		if (op == OPERATION_CREATE) {
 			// if this is a handshake, check if the queue can be allocated
-			if (q in queue_map) {
+			if (
+				sending_queue in sending_queue_map ||
+				sending_queue in receiving_queue_list ||
+				receiving_queue in receiving_queue_list ||
+				receiving_queue in sending_queue_map
+			) {
 				writeResponse(res, ERR_QUEUE_IN_USE);
 			} else {
-				queue_map[q] = new Date();
-				senderChannel.assertQueue(q, { durable: false });
-				// send a command to a server to add a listener for this queue
+				sending_queue_map[sending_queue] = {
+					lastAccessed: new Date(),
+					receivingQueue: receiving_queue,
+				};
+				receiving_queue_list.push(receiving_queue);
+				senderChannel.assertQueue(sending_queue, { durable: false });
+				senderChannel.assertQueue(receiving_queue, { durable: false });
+				// send a command to a server to add a listener for these queues
 				senderChannel.sendToQueue(
 					COMMAND_QUEUE,
-					Buffer.from("add " + q)
+					Buffer.from("add " + sending_queue + " " + receiving_queue)
 				);
 				// wake up the server if it is sleeping
 				wakeUpServer();
 				// write the response back
-				writeResponse(res, 200, "Queue generated!");
+				writeResponse(
+					res,
+					200,
+					sending_queue_map[sending_queue].receivingQueue
+				);
 			}
 		} else if (op == OPERATION_SEND) {
 			// this is a send, so send to the specified queue, and
 			// regenerate its timestamp
-			if (!(q in queue_map)) {
+			if (!(sending_queue in sending_queue_map)) {
 				// check if the queue exists
 				writeResponse(res, ERR_QUEUE_NOT_FOUND);
 				return;
@@ -108,19 +132,28 @@ var server = http.createServer(function (req, res) {
 			// wake up the server if it is sleeping
 			wakeUpServer();
 			// send the change to queue
-			senderChannel.sendToQueue(q, Buffer.from(JSON.stringify(data)));
-			queue_map[q] = new Date();
+			senderChannel.sendToQueue(
+				sending_queue,
+				Buffer.from(JSON.stringify(data))
+			);
+			sending_queue_map[sending_queue].lastAccessed = new Date();
 			writeResponse(res, 200, "Message sent!");
 			//writeResponse(res, 200, transformedOperation);
 			transformedOperation = "";
 		} else if (op == OPERATION_JOIN) {
-			if (!(q in queue_map)) {
+			if (!(sending_queue in sending_queue_map)) {
 				writeResponse(res, ERR_QUEUE_NOT_FOUND);
 				return;
 			}
-			// the queue is accessed recently
-			queue_map[q] = new Date();
-			writeResponse(res, 200, "Added to the session!");
+			// these queues are accessed recently
+			sending_queue_map[sending_queue].lastAccessed = new Date();
+			writeResponse(
+				res,
+				200,
+				sending_queue_map[sending_queue].receivingQueue
+			);
+		} else if (op == OPERATION_GET_MSG) {
+			// Add code to send messages to collaborative_js
 		} else {
 			writeResponse(res, ERR_INVALID_OPERATION);
 		}
@@ -150,33 +183,43 @@ amqp.connect(CLOUDAMQP_URL, function (error0, connection) {
 		if (error1) {
 			throw error1;
 		}
-		var exchange = 'server_sendingQueue';
-	
-		channel.assertExchange(exchange, 'fanout', {
-			durable: false
+		var exchange = "server_sendingQueue";
+
+		channel.assertExchange(exchange, "fanout", {
+			durable: false,
 		});
-	
-		channel.assertQueue('', {
-			exclusive: true
-		}, function (error2, q) {
-			if (error2) {
-				throw error2;
-			}
-			console.log(" [*] Waiting for messages in %s. To exit press CTRL+C", q.queue);
-			channel.bindQueue(q.queue, exchange, '');
-	
-			channel.consume(q.queue, function (msg) {
-				if (msg.content) {
-					transformedOperation = msg.content.toString();
-					console.log(" [x] %s", msg.content.toString());
+
+		channel.assertQueue(
+			"",
+			{
+				exclusive: true,
+			},
+			function (error2, q) {
+				if (error2) {
+					throw error2;
 				}
-			}, {
-				noAck: true
-			});
-		});
+				console.log(
+					" [*] Waiting for messages in %s. To exit press CTRL+C",
+					q.queue
+				);
+				channel.bindQueue(q.queue, exchange, "");
+
+				channel.consume(
+					q.queue,
+					function (msg) {
+						if (msg.content) {
+							transformedOperation = msg.content.toString();
+							console.log(" [x] %s", msg.content.toString());
+						}
+					},
+					{
+						noAck: true,
+					}
+				);
+			}
+		);
 	});
 });
-
 
 /*
 const localtunnel = require("localtunnel");
@@ -201,15 +244,17 @@ const INACTIVE_TIMEOUT_MILLS = 1000 * 60 * 1;
 function purgeQueue() {
 	console.log("[x] Cleanup started..");
 	var d = new Date();
-	for (var q in queue_map) {
-		if (d - queue_map[q] >= INACTIVE_TIMEOUT_MILLS) {
+	for (var q in sending_queue_map) {
+		if (d - sending_queue_map[q].lastAccessed >= INACTIVE_TIMEOUT_MILLS) {
 			// purge this
 			console.log("[x] Requesting to delete '" + q + "'..");
 			senderChannel.sendToQueue(
 				COMMAND_QUEUE,
-				Buffer.from("remove " + q)
+				Buffer.from(
+					"remove " + q + " " + sending_queue_map[q].receivingQueue
+				)
 			);
-			delete queue_map[q];
+			delete sending_queue_map[q];
 		}
 	}
 	console.log("[x] Cleanup finished..");
@@ -221,7 +266,7 @@ if (SERVER_URL == null || SERVER_URL.length == 0) {
 }
 
 function wakeUpServer() {
-	var h = require("https");
+	var h = require("http");
 	h.get(SERVER_URL);
 }
 
