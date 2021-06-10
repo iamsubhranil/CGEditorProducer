@@ -95,6 +95,7 @@ var server = http.createServer(function (req, res) {
 		}
 		if (op == OPERATION_CREATE) {
 			// if this is a handshake, check if the queue can be allocated
+
 			if (
 				sending_queue in sending_queue_map ||
 				sending_queue in receiving_queue_list ||
@@ -121,7 +122,15 @@ var server = http.createServer(function (req, res) {
 									"' removed!"
 							);
 						} else {
-							pendingChanges[sending_queue].push(msg);
+							console.log(
+								"[+] Received in " +
+									receiving_queue +
+									" ---> " +
+									msg.content.toString("latin1")
+							);
+							pendingChanges[sending_queue].push(
+								msg.content.toString("latin1")
+							);
 						}
 					},
 					{ noAck: true }
@@ -131,12 +140,12 @@ var server = http.createServer(function (req, res) {
 					COMMAND_QUEUE,
 					Buffer.from("add " + sending_queue + " " + receiving_queue)
 				);
-				senderChannel.consume(
+				/*senderChannel.consume(
 					receiving_queue,
 					function (msg) {
 						console.log(msg);
 					},
-					{ noAck: true });
+					{ noAck: true });*/
 				// wake up the server if it is sleeping
 				wakeUpServer();
 				// write the response back
