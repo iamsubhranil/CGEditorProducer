@@ -11,11 +11,12 @@ if (CLOUDAMQP_URL == null || CLOUDAMQP_URL.length == 0) {
 var senderChannel = null;
 var sending_queue_map = {};
 var receiving_queue_list = [];
+var pendingChanges = {};
 
 const OPERATION_CREATE = "create";
 const OPERATION_SEND = "send";
 const OPERATION_JOIN = "join";
-const OPERATION_GET_MSG = "receive";
+const OPERATION_RECEIVE = "receive";
 
 const ERR_QUEUE_NAME_NOT_SPECIFIED = 460;
 const ERR_START = ERR_QUEUE_NAME_NOT_SPECIFIED;
@@ -24,6 +25,7 @@ const ERR_RESERVED_QUEUE_NAME = 462;
 const ERR_QUEUE_IN_USE = 463;
 const ERR_QUEUE_NOT_FOUND = 464;
 const ERR_INVALID_OPERATION = 465;
+const ERR_NO_NEW_OPERATION = 466;
 
 const ERROR_MESSAGES = [
 	"Queue name not specified in request!",
@@ -32,6 +34,7 @@ const ERROR_MESSAGES = [
 	"Queue already in use!",
 	"Queue not found!",
 	"Invalid operation!",
+	"No new update operation is present!",
 ];
 
 function writeResponse(res, code, msg = "") {
@@ -107,11 +110,33 @@ var server = http.createServer(function (req, res) {
 				receiving_queue_list.push(receiving_queue);
 				senderChannel.assertQueue(sending_queue, { durable: false });
 				senderChannel.assertQueue(receiving_queue, { durable: false });
+				pendingChanges[sending_queue] = [];
+				senderChannel.consume(
+					receiving_queue,
+					function (msg) {
+						if (msg == null) {
+							console.log(
+								"[x] Receiving queue '" +
+									receiving_queue +
+									"' removed!"
+							);
+						} else {
+							pendingChanges[sending_queue].push(msg);
+						}
+					},
+					{ noAck: true }
+				);
 				// send a command to a server to add a listener for these queues
 				senderChannel.sendToQueue(
 					COMMAND_QUEUE,
 					Buffer.from("add " + sending_queue + " " + receiving_queue)
 				);
+				senderChannel.consume(
+					receiving_queue,
+					function (msg) {
+						console.log(msg);
+					},
+					{ noAck: true });
 				// wake up the server if it is sleeping
 				wakeUpServer();
 				// write the response back
@@ -152,8 +177,30 @@ var server = http.createServer(function (req, res) {
 				200,
 				sending_queue_map[sending_queue].receivingQueue
 			);
-		} else if (op == OPERATION_GET_MSG) {
+		} else if (op == OPERATION_RECEIVE) {
+			if (!(sending_queue in sending_queue_map)) {
+				writeResponse(res, ERR_QUEUE_NOT_FOUND);
+				return;
+			}
 			// Add code to send messages to collaborative_js
+			var receiveFrom = data["receiveFrom"];
+			if (pendingChanges[sending_queue].length <= receiveFrom) {
+				writeResponse(res, ERR_NO_NEW_OPERATION);
+			} else {
+				var changes = [];
+				for (
+					var i = receiveFrom;
+					i < pendingChanges[sending_queue].length;
+					i++
+				) {
+					changes.push(pendingChanges[sending_queue][i]);
+				}
+				var toSend = {
+					numOfChanges: pendingChanges[sending_queue].length - i + 1,
+					changesToUpdate: changes,
+				};
+				writeResponse(res, 200, JSON.stringify(toSend));
+			}
 		} else {
 			writeResponse(res, ERR_INVALID_OPERATION);
 		}
@@ -179,46 +226,6 @@ amqp.connect(CLOUDAMQP_URL, function (error0, connection) {
 		server.listen(PORT);
 	});
 	// Receiving Queue
-	connection.createChannel(function (error1, channel) {
-		if (error1) {
-			throw error1;
-		}
-		var exchange = "server_sendingQueue";
-
-		channel.assertExchange(exchange, "fanout", {
-			durable: false,
-		});
-
-		channel.assertQueue(
-			"",
-			{
-				exclusive: true,
-			},
-			function (error2, q) {
-				if (error2) {
-					throw error2;
-				}
-				console.log(
-					" [*] Waiting for messages in %s. To exit press CTRL+C",
-					q.queue
-				);
-				channel.bindQueue(q.queue, exchange, "");
-
-				channel.consume(
-					q.queue,
-					function (msg) {
-						if (msg.content) {
-							transformedOperation = msg.content.toString();
-							console.log(" [x] %s", msg.content.toString());
-						}
-					},
-					{
-						noAck: true,
-					}
-				);
-			}
-		);
-	});
 });
 
 /*
@@ -239,7 +246,7 @@ const PREFERRED_SUBDOMAIN = "cgeproducerserver";
 	});
 })();*/
 
-const INACTIVE_TIMEOUT_MILLS = 1000 * 60 * 1;
+const INACTIVE_TIMEOUT_MILLS = 1000 * 60 * 10;
 
 function purgeQueue() {
 	console.log("[x] Cleanup started..");
@@ -255,6 +262,7 @@ function purgeQueue() {
 				)
 			);
 			delete sending_queue_map[q];
+			delete pendingChanges[q];
 		}
 	}
 	console.log("[x] Cleanup finished..");
