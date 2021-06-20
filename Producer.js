@@ -35,6 +35,12 @@ const ERROR_MESSAGES = [
 	"No new update operation is present!",
 ];
 
+/**
+ * Writes a proper response to client's HTTP request
+ * @param {object} res The HTTP response in which response is to be written
+ * @param {number} code The status code
+ * @param {string} msg The message to write
+ */
 function writeResponse(res, code, msg = "") {
 	res.writeHead(code, { "Content-Type": "text/plain" });
 	if (msg.length > 0) {
@@ -255,6 +261,9 @@ const PREFERRED_SUBDOMAIN = "cgeproducerserver";
 
 const INACTIVE_TIMEOUT_MILLS = 1000 * 60 * 10;
 
+/**
+ * Removes the communication queues that have been idle for too long
+ */
 function purgeQueue() {
 	console.log("[x] Cleanup started..");
 	var d = new Date();
@@ -280,6 +289,9 @@ if (SERVER_URL == null || SERVER_URL.length == 0) {
 	console.log("[!] Error: Set SERVERURL environment variable first!");
 }
 
+/**
+ * Pings the server to wake it up and handle messages
+ */
 function wakeUpServer() {
 	var h = require("http");
 	h.get(SERVER_URL);
