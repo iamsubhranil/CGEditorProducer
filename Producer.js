@@ -130,11 +130,11 @@ var server = http.createServer(function (req, res) {
 								"[+] Received in " +
 									receiving_queue +
 									" ---> " +
-									msg.content.toString()
+									msg.content
 							);
 							pendingChanges[sending_queue].push(
 								// JSON.parse
-								msg.content.toString()
+								JSON.parse(msg.content)
 							);
 						}
 					},
