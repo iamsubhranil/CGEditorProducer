@@ -134,7 +134,7 @@ var server = http.createServer(function (req, res) {
 							);
 							pendingChanges[sending_queue].push(
 								// JSON.parse
-								JSON.parse(msg.content)
+								...JSON.parse(msg.content)
 							);
 						}
 					},
@@ -212,6 +212,7 @@ var server = http.createServer(function (req, res) {
 				var toSend = {
 					numOfChanges: pendingChanges[sending_queue].length - i + 1,
 					changesToUpdate: changes,
+					sentFrom: receiveFrom,
 				};
 				writeResponse(res, 200, JSON.stringify(toSend));
 			}
