@@ -10,6 +10,14 @@ var senderChannel = null;
 var sending_queue_map = {};
 var receiving_queue_list = [];
 var pendingChanges = {};
+// Every client has to be separately identifiable, so producer will assign a
+// separate identifier to each client when he/she creates/joins a session.
+// The server needs to merge transformations by two separate clients together,
+// so it needs to know which operation belongs to what client. Since all
+// clients share the same upstream queue, without this, there is no way
+// for the server to distinguish between various messages in the same
+// upstream queue.
+var clientIdInSession = {};
 
 const OPERATION_CREATE = "create";
 const OPERATION_SEND = "send";
@@ -134,7 +142,7 @@ var server = http.createServer(function (req, res) {
 							);
 							pendingChanges[sending_queue].push(
 								// JSON.parse
-								...JSON.parse(msg.content)
+								...JSON.parse(msg.content) //... spread operator
 							);
 						}
 					},
@@ -154,10 +162,13 @@ var server = http.createServer(function (req, res) {
 				// wake up the server if it is sleeping
 				wakeUpServer();
 				// write the response back
+				// Now make initialisation of clientID
+				clientIdInSession[sending_queue] = 0;
 				writeResponse(
 					res,
 					200,
-					sending_queue_map[sending_queue].receivingQueue
+					sending_queue_map[sending_queue].receivingQueue +
+						" clientID=0"
 				);
 			}
 		} else if (op == OPERATION_SEND) {
@@ -189,7 +200,9 @@ var server = http.createServer(function (req, res) {
 			writeResponse(
 				res,
 				200,
-				sending_queue_map[sending_queue].receivingQueue
+				sending_queue_map[sending_queue].receivingQueue +
+					" clientID=" +
+					++clientIdInSession[sending_queue]
 			);
 		} else if (op == OPERATION_RECEIVE) {
 			if (!(sending_queue in sending_queue_map)) {
