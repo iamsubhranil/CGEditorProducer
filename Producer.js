@@ -151,7 +151,14 @@ var server = http.createServer(function (req, res) {
 				// send a command to a server to add a listener for these queues
 				senderChannel.sendToQueue(
 					COMMAND_QUEUE,
-					Buffer.from("add " + sending_queue + " " + receiving_queue)
+					Buffer.from(
+						"add " +
+							sending_queue +
+							" " +
+							receiving_queue +
+							" " +
+							data["fileName"]
+					)
 				);
 				/*senderChannel.consume(
 					receiving_queue,
